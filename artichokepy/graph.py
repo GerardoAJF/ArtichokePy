@@ -3,39 +3,56 @@ import colorama as cl
 import itertools as tools
 
 
+RelationType = t.Tuple["Node", float]
+MatrixType = t.Iterable[t.Iterable[t.Any]]
+
 class Node:
     def __init__(self, value: t.Any) -> None:
         self.value = value
+        self.degree = 0
         self.relations: t.Set[Relation] = set()
         self.graphs = set()
 
     def __repr__(self) -> str:
         return str(self.value)
 
-    def bidirectional_relation(self, *args: t.Tuple[t.Self, float]) -> t.Self:
-        for node, weight in args:
-            self.relations.add(Relation(self, node, weight))
-            node.relations.add(Relation(node, self, weight))
+    def bidirectional_relation(self, *relations: RelationType) -> t.Self:
+        for node, weight in relations:
+            relation = Relation(self, node, weight)
 
+            self.relations.add(relation)
+            node.relations.add(relation.reverse())
+
+        self.update_degree()
         self.notify_update()
         return self
 
-    def unidirectional_relation(self, *args: t.Tuple[t.Self, float]) -> t.Self:
-        for node, weight in args:
+    def unidirectional_relation(self, *relations: RelationType) -> t.Self:
+        for node, weight in relations:
             self.relations.add(Relation(self, node, weight))
 
+        self.update_degree()
         self.notify_update()
         return self
 
-    def add_graph(self, graph):
+    def add_graph(self, graph) -> t.Self:
         self.graphs.add(graph)
         return self
 
-    def remove_graph(self, graph):
-        self.graphs.remove(graph)
+    def remove_graph(self, graph) -> t.Self:
+        self.graphs.discard(graph)
         return self
 
-    def notify_update(self):
+    def update_degree(self) -> None:
+        self.degree = len(self.relations)
+        
+    def is_child(self, parent: "Node"):
+        for relation in parent.relations:
+            if relation.end == self:
+                return True
+        return False
+
+    def notify_update(self) -> None:
         for graph in self.graphs:
             graph.notify_update()
 
@@ -46,12 +63,21 @@ class Relation:
         self.end = end
 
         self.weight = weight
+    
+    def __repr__(self) -> str:
+        return f"{str(self.init)} -> {str(self.end)}: {self.weight}"
 
     def reverse(self) -> "Relation":
         return Relation(self.end, self.init, self.weight)
 
-    def __repr__(self) -> str:
-        return f"{str(self.init)} -> {str(self.end)}: {self.weight}"
+    def __eq__(self, value: object) -> bool:
+        if isinstance(value, Relation):
+            if (self.weight == value.weight) and (self.init is value.init) and (self.end is value.end):
+                return True
+        return False
+    
+    def __hash__(self) -> int:
+        return hash((self.weight, self.init, self.end))
 
 
 class Graph:
@@ -59,6 +85,8 @@ class Graph:
         self._nodes = set()
         self.adjacent_matrix = [[]]
         self._id = tools.count()
+
+    # * NODES-------------------------------------
 
     @property
     def nodes(self) -> t.Set[Node]:
@@ -72,23 +100,36 @@ class Graph:
 
         self.update_adjacent_matrix()
 
-    def add_node(self, *args: Node):
-        for node in args:
+    def add_node(self, *values: t.Any) -> t.Iterable[Node]:
+        nodes = []
+        for value in values: 
+            node = Node(value)
+            nodes.append(node)
+
             self._nodes.add(node)
             node.add_graph(self)
 
         self.update_adjacent_matrix()
-        return self
 
-    def remove_node(self, node: Node):
-        if self in node.graphs:
+        if len(nodes) == 1:
+            return nodes[0]
+        return nodes
+
+    def remove_node(self, *nodes: Node) -> None:
+        for node in nodes:
             self.nodes.discard(node)
             node.remove_graph(self)
 
-            self.update_adjacent_matrix()
-            return self
+            for old_node in self.nodes:
+                for relation in old_node.relations.copy():
+                    if relation.end == node:
+                        old_node.relations.discard(relation)
 
-    def create_adjacent_matrix(self):
+        self.update_adjacent_matrix()
+
+    # * ADJACENT MATRIX-------------------------------------
+
+    def create_adjacent_matrix(self) -> MatrixType:
         nodes_index = {node: index for index, node in enumerate(self.nodes)}
 
         matrix = [["@", *nodes_index.keys()]]
@@ -105,8 +146,23 @@ class Graph:
 
         return matrix
 
-    def update_adjacent_matrix(self):
+    def update_adjacent_matrix(self) -> None:
         self.adjacent_matrix = self.create_adjacent_matrix()
+
+    # * TYPES-------------------------------------
+
+    def is_eulerian(self) -> bool:
+        odd_nodes = 0
+
+        for node in self.nodes:
+            if node.degree % 2 == 1:
+                odd_nodes += 1
+
+        if (odd_nodes == 0) or (odd_nodes == 2):
+            return True
+        return False
+
+    # * OPERATORS-------------------------------------
 
     def __eq__(self, value: object) -> bool:
         if isinstance(value, Graph):
@@ -116,23 +172,22 @@ class Graph:
     def __hash__(self) -> int:
         return hash(((value for fila in self.adjacent_matrix for value in fila), self._id))
 
-    def __add__(self, graph: t.Self):
+    def __add__(self, graph: t.Self) -> "Graph":
         new_graph = Graph()
         new_graph.nodes = self.nodes.union(graph.nodes)
 
         return new_graph
 
-    def __sub__(self, graph: t.Self):
+    def __sub__(self, graph: t.Self) -> "Graph":
         new_graph = Graph()
         new_graph.nodes = self.nodes.difference(graph.nodes)
-        
+
         return new_graph
 
-    def notify_update(self):
+    # * OTHERS-------------------------------------
+
+    def notify_update(self) -> None:
         self.update_adjacent_matrix()
-
-
-MatrixType = t.Iterable[t.Iterable[t.Any]]
 
 
 def print_adjacent_matrix(graph: t.Union[Graph, MatrixType]) -> None:
@@ -150,22 +205,6 @@ def print_adjacent_matrix(graph: t.Union[Graph, MatrixType]) -> None:
 
 
 if __name__ == "__main__":
-    a = Node("A")
-    b = Node("B")
-    c = Node("C").bidirectional_relation((b, 0)).unidirectional_relation((a, 0))
-    d = Node("D").unidirectional_relation((a, 0))
+    my_graph = Graph()
 
-    graph1 = Graph()
-    graph1.add_node(a, b, c)
-
-    graph2 = Graph()
-    graph2.add_node(a, d)
-
-    print_adjacent_matrix(graph1)
-    print("-"*10)
-
-    print_adjacent_matrix(graph2)
-    print("-" * 10)
-
-    print_adjacent_matrix(graph1 + graph2)
-    print("-"*10)
+    a, b, c, d = my_graph.add_node("A", "B", "C", "D")
