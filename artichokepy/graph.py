@@ -2,66 +2,58 @@ import typing as t
 import colorama as cl
 import itertools as tools
 
-
 RelationType = t.Tuple["Node", float]
-MatrixType = t.Iterable[t.Iterable[t.Any]]
+
+VectorType = t.Dict["Node", t.Any]
+MatrixType = t.Dict["Node", VectorType]
+
 
 class Node:
+    counter = tools.count()
+    
     def __init__(self, value: t.Any) -> None:
+        self._id = "N" + str(next(Node.counter))
         self.value = value
-        self.degree = 0
         self.relations: t.Set[Relation] = set()
-        self.graphs = set()
 
     def __repr__(self) -> str:
         return str(self.value)
 
-    def bidirectional_relation(self, *relations: RelationType) -> t.Self:
+    @property
+    def degree(self) -> int:
+        return len(self.relations)
+
+    def add_relation(self, *relations: RelationType, bidirectional=False) -> t.Self:
         for node, weight in relations:
             relation = Relation(self, node, weight)
-
             self.relations.add(relation)
-            node.relations.add(relation.reverse())
 
-        self.update_degree()
-        self.notify_update()
+            if bidirectional:
+                node.relations.add(relation.reverse())
+
         return self
 
-    def unidirectional_relation(self, *relations: RelationType) -> t.Self:
-        for node, weight in relations:
-            self.relations.add(Relation(self, node, weight))
+    def remove_relation(self, *nodes: "Node", bidirectional=False):
+        for relation in self.relations.copy():
+            if relation.end in nodes:
+                self.relations.discard(relation)
 
-        self.update_degree()
-        self.notify_update()
-        return self
+                if bidirectional:
+                    relation.end.relations.discard(relation.reverse())
 
-    def add_graph(self, graph) -> t.Self:
-        self.graphs.add(graph)
-        return self
-
-    def remove_graph(self, graph) -> t.Self:
-        self.graphs.discard(graph)
-        return self
-
-    def update_degree(self) -> None:
-        self.degree = len(self.relations)
-        
-    def is_child(self, parent: "Node"):
-        for relation in parent.relations:
-            if relation.end == self:
-                return True
+    def __eq__(self, value: object) -> bool:
+        if isinstance(value, Node) and (self._id == value._id):
+            return True
         return False
 
-    def notify_update(self) -> None:
-        for graph in self.graphs:
-            graph.notify_update()
+    def __hash__(self) -> int:
+        return hash(self._id)
 
 
 class Relation:
     def __init__(self, init: Node, end: Node, weight: float = 0) -> None:
         self.init = init
         self.end = end
-
         self.weight = weight
     
     def __repr__(self) -> str:
@@ -81,73 +73,67 @@ class Relation:
 
 
 class Graph:
+    counter = tools.count()
+
     def __init__(self) -> None:
-        self._nodes = set()
-        self.adjacent_matrix = [[]]
-        self._id = tools.count()
+        self._id = "G" + str(next(Graph.counter))
+        self.nodes = set()
 
     # * NODES-------------------------------------
 
-    @property
-    def nodes(self) -> t.Set[Node]:
-        return self._nodes
+    def add_node(self, *nodes: t.Union[Node, t.Any]) -> t.Iterable[Node]:
+        new_nodes = []
 
-    @nodes.setter
-    def nodes(self, nodes: t.Iterable[Node]):
         for node in nodes:
-            self._nodes.add(node)
-            node.add_graph(self)
+            if isinstance(node, Node):
+                new_node = Node(node.value)
+                new_node._id = node._id
+            else:
+                new_node = Node(node)
 
-        self.update_adjacent_matrix()
+            new_nodes.append(new_node)
+            self.nodes.add(new_node)
 
-    def add_node(self, *values: t.Any) -> t.Iterable[Node]:
-        nodes = []
-        for value in values: 
-            node = Node(value)
-            nodes.append(node)
+        return new_nodes
 
-            self._nodes.add(node)
-            node.add_graph(self)
-
-        self.update_adjacent_matrix()
-
-        if len(nodes) == 1:
-            return nodes[0]
-        return nodes
-
-    def remove_node(self, *nodes: Node) -> None:
+    def remove_node(self, *nodes: Node) -> None: #TODO: no tiene sentido tener que iterar todos los nodos
         for node in nodes:
             self.nodes.discard(node)
-            node.remove_graph(self)
 
             for old_node in self.nodes:
                 for relation in old_node.relations.copy():
                     if relation.end == node:
                         old_node.relations.discard(relation)
 
-        self.update_adjacent_matrix()
-
-    # * ADJACENT MATRIX-------------------------------------
-
-    def create_adjacent_matrix(self) -> MatrixType:
-        nodes_index = {node: index for index, node in enumerate(self.nodes)}
-
-        matrix = [["@", *nodes_index.keys()]]
-
-        for node in nodes_index.keys():
-            matrix.append([node] + [0] * len(nodes_index))
+    @property
+    def relations(self) -> t.Set[Relation]:
+        relations = set()
 
         for node in self.nodes:
-            init = nodes_index[node]
-            for relation in node.relations:
-                if relation.end in nodes_index:
-                    end = nodes_index[relation.end]
-                    matrix[init + 1][end + 1] = 1
+            relations.update(node.relations)
+
+        return relations
+
+    @property
+    def adjacency_matrix(self) -> MatrixType:
+        matrix = {node: {node: 0 for node in self.nodes} for node in self.nodes}
+
+        for relation in self.relations:
+            matrix[relation.init][relation.end] = 1
 
         return matrix
 
-    def update_adjacent_matrix(self) -> None:
-        self.adjacent_matrix = self.create_adjacent_matrix()
+    @property
+    def adjacency_list(self) -> VectorType:
+        adjacency_list = dict()
+
+        for node in self.nodes:
+            adjacency_list[node] = []
+
+            for relation in node.relations:
+                adjacency_list[node].append(relation.end)
+
+        return adjacency_list
 
     # * TYPES-------------------------------------
 
@@ -166,45 +152,52 @@ class Graph:
 
     def __eq__(self, value: object) -> bool:
         if isinstance(value, Graph):
-            return self.adjacent_matrix == value.adjacent_matrix
+            return [[*row.values()] for row in self.adjacency_matrix.values()] == [
+                    [*row.values()] for row in value.adjacency_matrix.values()]
         return False
 
     def __hash__(self) -> int:
-        return hash(((value for fila in self.adjacent_matrix for value in fila), self._id))
+        return hash((([*row.values()] for row in self.adjacency_matrix.values()), self._id))
 
-    def __add__(self, graph: t.Self) -> "Graph":
+    def __add__(self, graph: t.Self) -> "Graph": #TODO: tambien resolver esto
         new_graph = Graph()
-        new_graph.nodes = self.nodes.union(graph.nodes)
+        new_graph.add_node(*self.nodes)
+        new_graph.add_node(*graph.nodes)
 
         return new_graph
 
-    def __sub__(self, graph: t.Self) -> "Graph":
-        new_graph = Graph()
-        new_graph.nodes = self.nodes.difference(graph.nodes)
+    def __sub__(self, graph: t.Self) -> "Graph": #TODO: resolver esto
+        new_graph = Graph()  
+        new_graph.add_node(*self.nodes)
+        new_graph.remove_node(*graph.nodes)
 
         return new_graph
 
-    # * OTHERS-------------------------------------
 
-    def notify_update(self) -> None:
-        self.update_adjacent_matrix()
-
-
-def print_adjacent_matrix(graph: t.Union[Graph, MatrixType]) -> None:
+def print_adjacent_matrix(matrix: t.Union[Graph, MatrixType]) -> None:
     cl.init(autoreset=True)
     colors = {0: cl.Fore.RED, 1: cl.Fore.GREEN}
 
-    if isinstance(graph, Graph):
-        graph = graph.adjacent_matrix
+    if isinstance(matrix, Graph):
+        matrix = matrix.adjacency_matrix
 
-    for line in graph:
-        for column in line:
-            color = colors.get(column, cl.Fore.LIGHTWHITE_EX)
-            print(color + str(column), end=" | ")
+    print("@", *matrix.keys())
+
+    for node, row in matrix.items():
+        print(node, end=" ")
+        for number in row.values():
+            print(colors[number] + str(number), end=" ")
         print()
-
 
 if __name__ == "__main__":
     my_graph = Graph()
 
     a, b, c, d = my_graph.add_node("A", "B", "C", "D")
+
+    a.add_relation((b, 0), (c, 0), bidirectional=True)
+    b.add_relation((d, 0))
+        
+    print(my_graph.adjacency_matrix)
+    print(my_graph.adjacency_list)
+    print(my_graph.relations)
+    print("-"*25)
