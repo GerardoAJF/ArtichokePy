@@ -7,13 +7,14 @@ RelationType = t.Tuple["Node", float]
 VectorType = t.Dict["Node", t.Any]
 MatrixType = t.Dict["Node", VectorType]
 
-
 class Node:
     counter = tools.count()
-    
+
     def __init__(self, value: t.Any) -> None:
         self._id = "N" + str(next(Node.counter))
         self.value = value
+
+        self.parents: t.Set["Node"] = set()
         self.relations: t.Set[Relation] = set()
 
     def __repr__(self) -> str:
@@ -27,19 +28,25 @@ class Node:
         for node, weight in relations:
             relation = Relation(self, node, weight)
             self.relations.add(relation)
+            node.parents.add(self)
 
             if bidirectional:
                 node.relations.add(relation.reverse())
+                self.parents.add(node)
 
         return self
 
-    def remove_relation(self, *nodes: "Node", bidirectional=False):
+    def remove_relation(self, *nodes: "Node", bidirectional=False) -> t.Self:        
         for relation in self.relations.copy():
             if relation.end in nodes:
                 self.relations.discard(relation)
+                relation.end.parents.discard(self)
 
                 if bidirectional:
                     relation.end.relations.discard(relation.reverse())
+                    self.parents.discard(relation.end)
+        
+        return self
 
     def __eq__(self, value: object) -> bool:
         if isinstance(value, Node) and (self._id == value._id):
@@ -64,7 +71,7 @@ class Relation:
 
     def __eq__(self, value: object) -> bool:
         if isinstance(value, Relation):
-            if (self.weight == value.weight) and (self.init is value.init) and (self.end is value.end):
+            if (self.weight == value.weight) and (self.init == value.init) and (self.end == value.end):
                 return True
         return False
     
@@ -81,13 +88,15 @@ class Graph:
 
     # * NODES-------------------------------------
 
-    def add_node(self, *nodes: t.Union[Node, t.Any]) -> t.Iterable[Node]:
+    def add_node(self, *nodes: t.Union[Node, t.Any]) -> t.List[Node]:
         new_nodes = []
 
         for node in nodes:
+
             if isinstance(node, Node):
                 new_node = Node(node.value)
                 new_node._id = node._id
+
             else:
                 new_node = Node(node)
 
@@ -96,14 +105,12 @@ class Graph:
 
         return new_nodes
 
-    def remove_node(self, *nodes: Node) -> None: #TODO: no tiene sentido tener que iterar todos los nodos
+    def remove_node(self, *nodes: Node) -> None:
         for node in nodes:
             self.nodes.discard(node)
 
-            for old_node in self.nodes:
-                for relation in old_node.relations.copy():
-                    if relation.end == node:
-                        old_node.relations.discard(relation)
+            for parent in node.parents.copy():
+                parent.remove_relation(node)
 
     @property
     def relations(self) -> t.Set[Relation]:
@@ -113,6 +120,25 @@ class Graph:
             relations.update(node.relations)
 
         return relations
+
+    @relations.setter
+    def relations(self, relations: t.Set[Relation]) -> None:        
+        nodes_converter = dict()
+
+        for relation in relations:
+            old_init = relation.init
+            old_end = relation.end
+
+            if old_init not in nodes_converter:
+                nodes_converter[old_init] = self.add_node(old_init)[0]
+
+            if old_end not in nodes_converter:
+                nodes_converter[old_end] = self.add_node(old_end)[0]
+
+            init_node = nodes_converter[old_init]
+            end_node = nodes_converter[old_end]
+
+            init_node.add_relation((end_node, relation.weight))
 
     @property
     def adjacency_matrix(self) -> MatrixType:
@@ -159,17 +185,15 @@ class Graph:
     def __hash__(self) -> int:
         return hash((([*row.values()] for row in self.adjacency_matrix.values()), self._id))
 
-    def __add__(self, graph: t.Self) -> "Graph": #TODO: tambien resolver esto
+    def __add__(self, graph: t.Self) -> "Graph": 
         new_graph = Graph()
-        new_graph.add_node(*self.nodes)
-        new_graph.add_node(*graph.nodes)
+        new_graph.relations = self.relations.union(graph.relations);
 
         return new_graph
 
-    def __sub__(self, graph: t.Self) -> "Graph": #TODO: resolver esto
+    def __sub__(self, graph: t.Self) -> "Graph": 
         new_graph = Graph()  
-        new_graph.add_node(*self.nodes)
-        new_graph.remove_node(*graph.nodes)
+        new_graph.relations = self.relations.difference(graph.relations);
 
         return new_graph
 
@@ -177,27 +201,33 @@ class Graph:
 def print_adjacent_matrix(matrix: t.Union[Graph, MatrixType]) -> None:
     cl.init(autoreset=True)
     colors = {0: cl.Fore.RED, 1: cl.Fore.GREEN}
-
+    
     if isinstance(matrix, Graph):
         matrix = matrix.adjacency_matrix
-
-    print("@", *matrix.keys())
-
+    
+    print("@", *matrix)
+    
     for node, row in matrix.items():
-        print(node, end=" ")
+        print(str(node), end=" ")
         for number in row.values():
-            print(colors[number] + str(number), end=" ")
+            print(colors.get(number, cl.Fore.WHITE) + str(number), end=" ")
         print()
+    
+    print(cl.Fore.YELLOW + "-" * 25)
+
 
 if __name__ == "__main__":
     my_graph = Graph()
+    a, b, c = my_graph.add_node("A", "B", "C")
 
-    a, b, c, d = my_graph.add_node("A", "B", "C", "D")
+    a.add_relation((b, 0), (c, 0))
+    print_adjacent_matrix(my_graph)
+   
+    my_graph2 = Graph()
+    a2, c2, d = my_graph2.add_node(a, c, "D")
+    
+    c2.add_relation((a2, 0), (d, 0))
+    print_adjacent_matrix(my_graph2)
 
-    a.add_relation((b, 0), (c, 0), bidirectional=True)
-    b.add_relation((d, 0))
-        
-    print(my_graph.adjacency_matrix)
-    print(my_graph.adjacency_list)
-    print(my_graph.relations)
-    print("-"*25)
+    print_adjacent_matrix(my_graph + my_graph2)
+    print_adjacent_matrix(my_graph - my_graph2)
