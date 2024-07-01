@@ -7,6 +7,7 @@ RelationType = t.Tuple["Node", float]
 VectorType = t.Dict["Node", t.Any]
 MatrixType = t.Dict["Node", VectorType]
 
+
 class Node:
     counter = tools.count()
 
@@ -14,7 +15,7 @@ class Node:
         self._id = "N" + str(next(Node.counter))
         self.value = value
 
-        self.parents: t.Set["Node"] = set()
+        self.parents: t.Set[Relation] = set()
         self.relations: t.Set[Relation] = set()
 
     def __repr__(self) -> str:
@@ -27,25 +28,27 @@ class Node:
     def add_relation(self, *relations: RelationType, bidirectional=False) -> t.Self:
         for node, weight in relations:
             relation = Relation(self, node, weight)
+
             self.relations.add(relation)
-            node.parents.add(self)
+            node.parents.add(relation)
 
             if bidirectional:
                 node.relations.add(relation.reverse())
-                self.parents.add(node)
+                self.parents.add(relation.reverse())
 
         return self
 
-    def remove_relation(self, *nodes: "Node", bidirectional=False) -> t.Self:        
+    def remove_relation(self, *nodes: "Node", bidirectional=False) -> t.Self:
         for relation in self.relations.copy():
             if relation.end in nodes:
+
                 self.relations.discard(relation)
-                relation.end.parents.discard(self)
+                relation.end.parents.discard(relation)
 
                 if bidirectional:
                     relation.end.relations.discard(relation.reverse())
-                    self.parents.discard(relation.end)
-        
+                    self.parents.discard(relation.reverse())
+
         return self
 
     def __eq__(self, value: object) -> bool:
@@ -62,7 +65,7 @@ class Relation:
         self.init = init
         self.end = end
         self.weight = weight
-    
+
     def __repr__(self) -> str:
         return f"{str(self.init)} -> {str(self.end)}: {self.weight}"
 
@@ -71,10 +74,14 @@ class Relation:
 
     def __eq__(self, value: object) -> bool:
         if isinstance(value, Relation):
-            if (self.weight == value.weight) and (self.init == value.init) and (self.end == value.end):
+            if (
+                (self.weight == value.weight)
+                and (self.init == value.init)
+                and (self.end == value.end)
+            ):
                 return True
         return False
-    
+
     def __hash__(self) -> int:
         return hash((self.weight, self.init, self.end))
 
@@ -85,6 +92,47 @@ class Graph:
     def __init__(self) -> None:
         self._id = "G" + str(next(Graph.counter))
         self.nodes = set()
+
+    # * CHARACTERISTICS-------------------------------------
+
+    def is_eulerian(self) -> bool:
+        input_unbalanced = 0
+        output_unbalanced = 0
+
+        for node in self.nodes:
+            input_edges = len(node.parents)
+            output_edges = len(node.relations)
+
+            unbalanced_edges = input_edges - output_edges
+
+            if unbalanced_edges == 1:
+                input_unbalanced += 1
+            elif unbalanced_edges == -1:
+                output_unbalanced += 1
+
+        if input_unbalanced > 1 or output_unbalanced > 1:
+            return False
+        return True
+            
+    def is_hamiltonian(self) -> bool:
+        if len(self.relations) <= 2:
+            return True
+
+        return all(node.degree >= len(self.nodes) / 2 for node in self.nodes)
+
+    @property
+    def density(self) -> float:
+        directed = any(relation.weight != 0 for relation in self.relations)
+
+        vertices = len(self.nodes)
+        if vertices <= 1:
+            return 0.0
+
+        if not directed:
+            return len(self.relations) / (vertices * (vertices - 1))
+
+        sum_weights = sum(relation.weight for relation in self.relations)
+        return sum_weights / (vertices * (vertices - 1))
 
     # * NODES-------------------------------------
 
@@ -110,7 +158,9 @@ class Graph:
             self.nodes.discard(node)
 
             for parent in node.parents.copy():
-                parent.remove_relation(node)
+                parent.init.remove_relation(node)
+
+    # * REPRESENTATIONS-------------------------------------
 
     @property
     def relations(self) -> t.Set[Relation]:
@@ -122,7 +172,7 @@ class Graph:
         return relations
 
     @relations.setter
-    def relations(self, relations: t.Set[Relation]) -> None:        
+    def relations(self, relations: t.Set[Relation]) -> None:
         nodes_converter = dict()
 
         for relation in relations:
@@ -161,39 +211,29 @@ class Graph:
 
         return adjacency_list
 
-    # * TYPES-------------------------------------
-
-    def is_eulerian(self) -> bool:
-        odd_nodes = 0
-
-        for node in self.nodes:
-            if node.degree % 2 == 1:
-                odd_nodes += 1
-
-        if (odd_nodes == 0) or (odd_nodes == 2):
-            return True
-        return False
-
     # * OPERATORS-------------------------------------
 
     def __eq__(self, value: object) -> bool:
         if isinstance(value, Graph):
             return [[*row.values()] for row in self.adjacency_matrix.values()] == [
-                    [*row.values()] for row in value.adjacency_matrix.values()]
+                [*row.values()] for row in value.adjacency_matrix.values()
+            ]
         return False
 
     def __hash__(self) -> int:
-        return hash((([*row.values()] for row in self.adjacency_matrix.values()), self._id))
+        return hash(
+            (([*row.values()] for row in self.adjacency_matrix.values()), self._id)
+        )
 
-    def __add__(self, graph: t.Self) -> "Graph": 
+    def __add__(self, graph: t.Self) -> "Graph":
         new_graph = Graph()
-        new_graph.relations = self.relations.union(graph.relations);
+        new_graph.relations = self.relations.union(graph.relations)
 
         return new_graph
 
-    def __sub__(self, graph: t.Self) -> "Graph": 
-        new_graph = Graph()  
-        new_graph.relations = self.relations.difference(graph.relations);
+    def __sub__(self, graph: t.Self) -> "Graph":
+        new_graph = Graph()
+        new_graph.relations = self.relations.difference(graph.relations)
 
         return new_graph
 
@@ -201,18 +241,18 @@ class Graph:
 def print_adjacent_matrix(matrix: t.Union[Graph, MatrixType]) -> None:
     cl.init(autoreset=True)
     colors = {0: cl.Fore.RED, 1: cl.Fore.GREEN}
-    
+
     if isinstance(matrix, Graph):
         matrix = matrix.adjacency_matrix
-    
+
     print("@", *matrix)
-    
+
     for node, row in matrix.items():
         print(str(node), end=" ")
         for number in row.values():
             print(colors.get(number, cl.Fore.WHITE) + str(number), end=" ")
         print()
-    
+
     print(cl.Fore.YELLOW + "-" * 25)
 
 
@@ -222,10 +262,10 @@ if __name__ == "__main__":
 
     a.add_relation((b, 0), (c, 0))
     print_adjacent_matrix(my_graph)
-   
+
     my_graph2 = Graph()
     a2, c2, d = my_graph2.add_node(a, c, "D")
-    
+
     c2.add_relation((a2, 0), (d, 0))
     print_adjacent_matrix(my_graph2)
 
