@@ -1,9 +1,10 @@
+import math
 import abc
 import typing as t
-from artichokepy.graph import Graph, Node, Relation
 
-NodeSolutionType = t.Tuple[Node, t.List[t.Tuple[Node, float]]]
+from artichokepy.graph import Graph, Node, Relation, RelationType
 
+NodeSolutionType = t.Tuple[Node, t.List[RelationType]] #TODO: make this a object
 
 class OrderedList:
 
@@ -36,15 +37,20 @@ class OrderedList:
         node: NodeSolutionType,
         function: t.Callable[[NodeSolutionType], float],
     ) -> None:
-        
+
         index = OrderedList.ordered_index(arr, node, function)
         arr.insert(index, node)
 
+
 # * ===============UNINFORMED FRONTIERS===============
+
 
 class Frontier(abc.ABC):
     def __init__(self) -> None:
         self.frontier = []
+
+    def clear(self) -> None:
+        self.frontier.clear()
 
     def get_len(self) -> int:
         return len(self.frontier)
@@ -69,44 +75,89 @@ class BFSFrontier(Frontier):
     def add_node(self, node: NodeSolutionType) -> None:
         self.frontier.append(node)
 
+# * ===============FUNCTIONS===============
 
-class DijkstraFrontier(Frontier):
-    def add_node(self, node: NodeSolutionType) -> None:
-        OrderedList.insert_ordered(self.frontier, node, self.get_path_value)
-       
-
-    def get_path_value(self, node: NodeSolutionType) -> float:
-        return sum((parent[1] for parent in node[1]))
-
-# * ===============INFORMED FRONTIERS===============
-
-class HeuristicFunction:
+class CostFunction():
     def __init__(self) -> None:
-        self.previous_node_solution = (Node(""), [()])
-        self.node_solution = (Node(""), [()])
+        self._function: t.Callable[[NodeSolutionType], float] = lambda x: 0
 
-        self.function: t.Callable[[NodeSolutionType], float] = lambda x: 0
-
-    @property
-    def previous_node(self):
-        return self.previous_node_solution[0]
-
-    @property
-    def node(self):
-        return self.node_solution[0]
-
-    def set_function(self, function: t.Callable[[NodeSolutionType], float]):
-        self.function = function
+    def set_function(self, function: t.Callable[[NodeSolutionType], float]) -> None:
+        self._function = function
 
     def __call__(self, node: NodeSolutionType) -> float:
-        if not self.previous_node.value:
-            self.previous_node_solution = node
+        return self._function(node)
 
-        self.node_solution = node
-        value = self.function(node)
-        self.previous_node_solution = self.node_solution
-        
-        return value
+
+class PathCost(CostFunction):
+    def __init__(self) -> None:
+        super().__init__()
+
+        def path_length(node_solution: NodeSolutionType):
+            return sum([node[1] for node in node_solution[1]])
+
+        self.set_function(path_length)
+
+
+class HeuristicFunction(CostFunction):
+    def check_scale(self, graph: Graph) -> float:
+        difference_sum = 0
+        count = 0
+
+        for relation in graph.relations:
+            weight = relation.weight if (relation.weight != 0) else 1
+            heuristic = self((relation.end, [(relation.init, relation.weight), ]))
+
+            if heuristic == weight:
+                return 0.0
+
+            relative_diff = abs(math.log10(heuristic / weight))
+
+            sensitivity_factor = 1.5
+            scaled_diff = relative_diff / sensitivity_factor
+
+            difference = math.tanh(scaled_diff)
+
+            difference_sum += difference
+            count += 1
+
+        if count > 0:
+            return difference_sum / count
+        return 0
+
+    def is_admissible(
+        self,
+        transition_function: CostFunction,
+        graph: Graph,
+        check_nodes: t.Optional[t.Iterable[Node]] = None,
+    ) -> bool:
+        search = SearchAlgorithm(BFSFrontier())
+
+        if not check_nodes:
+            check_nodes = graph.nodes
+
+        for init in check_nodes:
+            for end in check_nodes:
+
+                solution = search.search(graph, init, end)
+
+                if not solution[1]:
+                    continue
+
+                if transition_function(solution) < self(solution):
+                    return False
+        return True  
+
+
+# * ===============GENERIC SEARCH===============
+
+
+class DijkstraFrontier(Frontier):
+    def __init__(self) -> None:
+        super().__init__()
+        self.cost_function = PathCost()
+
+    def add_node(self, node: NodeSolutionType) -> None:
+        OrderedList.insert_ordered(self.frontier, node, self.cost_function)
 
 
 class GreedyFrontier(Frontier):
@@ -120,6 +171,7 @@ class GreedyFrontier(Frontier):
     def add_node(self, node: NodeSolutionType) -> None:
         OrderedList.insert_ordered(self.frontier, node, self.heuristic)
 
+
 # * ===============GENERIC SEARCH===============
 
 
@@ -128,10 +180,16 @@ class SearchAlgorithm:
         self.frontier = frontier
         self.exploration_set = set()
 
-    def get_next_nodes(self, node: Node) -> set[Relation]:
+    def reset (self):
+        self.frontier.clear()
+        self.exploration_set.clear()
+
+    def get_next_nodes(self, node: Node) -> t.Set[Relation]:
         return set(node.relations)
 
     def search(self, graph: Graph, start: Node, end: Node) -> NodeSolutionType:
+        self.reset()
+        
         self.frontier.add_node((start, []))
         self.exploration_set.add(start)
 

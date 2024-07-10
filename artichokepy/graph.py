@@ -22,7 +22,11 @@ class Node:
         return str(self.value)
 
     @property
-    def degree(self) -> int:
+    def input_degree(self) -> int:
+        return len(self.parents)
+
+    @property
+    def output_degree(self) -> int:
         return len(self.relations)
 
     def add_relation(self, *relations: RelationType, bidirectional=False) -> t.Self:
@@ -100,10 +104,7 @@ class Graph:
         output_unbalanced = 0
 
         for node in self.nodes:
-            input_edges = len(node.parents)
-            output_edges = len(node.relations)
-
-            unbalanced_edges = input_edges - output_edges
+            unbalanced_edges = node.input_degree - node.output_degree
 
             if unbalanced_edges == 1:
                 input_unbalanced += 1
@@ -113,7 +114,7 @@ class Graph:
         if input_unbalanced > 1 or output_unbalanced > 1:
             return False
         return True
-            
+
     def is_hamiltonian(self) -> bool:
         if len(self.relations) <= 2:
             return True
@@ -159,6 +160,28 @@ class Graph:
 
             for parent in node.parents.copy():
                 parent.init.remove_relation(node)
+
+    def get_centrality_nodes(self, centrality: t.Literal["central", "border"] = "central") -> t.Set[Node]:
+        if centrality == "central":
+            absolute_degree = float("-inf")
+            comparison = lambda x, y: x > y
+
+        else:
+            absolute_degree = float("inf")
+            comparison = lambda x, y: x < y
+
+        nodes = set()
+        for node in self.nodes:
+            degree = node.input_degree + node.output_degree
+
+            if comparison(degree, absolute_degree):
+                absolute_degree = degree
+                nodes.clear()
+                nodes.add(node)
+                
+            if degree == absolute_degree:
+                nodes.add(node)
+        return nodes
 
     # * REPRESENTATIONS-------------------------------------
 

@@ -1,2 +1,2 @@
 from artichokepy.graph import Node, Relation, Graph
-from artichokepy.algorithms import Frontier, BFSFrontier, DFSFrontier, DijkstraFrontier, GreedyFrontier, SearchAlgorithm, NodeSolutionType, HeuristicFunction
+from artichokepy.algorithms import Frontier, BFSFrontier, DFSFrontier, DijkstraFrontier, GreedyFrontier, SearchAlgorithm, NodeSolutionType, HeuristicFunction, CostFunction
