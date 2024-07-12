@@ -4,42 +4,7 @@ import typing as t
 
 from artichokepy.graph import Graph, Node, Relation, RelationType
 
-NodeSolutionType = t.Tuple[Node, t.List[RelationType]] #TODO: make this a object
-
-class OrderedList:
-
-    @staticmethod
-    def ordered_index(
-        arr: t.List[NodeSolutionType],
-        node: NodeSolutionType,
-        function: t.Callable[[NodeSolutionType], float],
-        pointer: int = 0,
-    ) -> int:
-        if not arr:
-            return pointer
-
-        mid_index = (len(arr) - 1) // 2
-        index = mid_index + pointer
-        path_value = function(node)
-
-        if path_value > function(arr[mid_index]):
-            return OrderedList.ordered_index(
-                arr[mid_index + 1 :], node, function, index + 1
-            )
-        elif path_value < function(arr[mid_index]):
-            return OrderedList.ordered_index(arr[:mid_index], node, function, pointer)
-
-        return index
-
-    @staticmethod
-    def insert_ordered(
-        arr: t.List[NodeSolutionType],
-        node: NodeSolutionType,
-        function: t.Callable[[NodeSolutionType], float],
-    ) -> None:
-
-        index = OrderedList.ordered_index(arr, node, function)
-        arr.insert(index, node)
+NodeSolutionType = t.Tuple[Node, t.List[RelationType]]  # TODO: make this a object
 
 
 # * ===============UNINFORMED FRONTIERS===============
@@ -75,9 +40,11 @@ class BFSFrontier(Frontier):
     def add_node(self, node: NodeSolutionType) -> None:
         self.frontier.append(node)
 
+
 # * ===============FUNCTIONS===============
 
-class CostFunction():
+
+class CostFunction:
     def __init__(self) -> None:
         self._function: t.Callable[[NodeSolutionType], float] = lambda x: 0
 
@@ -105,7 +72,14 @@ class HeuristicFunction(CostFunction):
 
         for relation in graph.relations:
             weight = relation.weight if (relation.weight != 0) else 1
-            heuristic = self((relation.end, [(relation.init, relation.weight), ]))
+            heuristic = self(
+                (
+                    relation.end,
+                    [
+                        (relation.init, relation.weight),
+                    ],
+                )
+            )
 
             if heuristic == weight:
                 return 0.0
@@ -126,15 +100,15 @@ class HeuristicFunction(CostFunction):
 
     def is_admissible(
         self,
-        transition_function: CostFunction,
         graph: Graph,
         check_nodes: t.Optional[t.Iterable[Node]] = None,
+        cost: CostFunction = PathCost()
     ) -> bool:
-        search = SearchAlgorithm(BFSFrontier())
 
         if not check_nodes:
             check_nodes = graph.nodes
 
+        search = SearchAlgorithm(BFSFrontier())
         for init in check_nodes:
             for end in check_nodes:
 
@@ -143,33 +117,67 @@ class HeuristicFunction(CostFunction):
                 if not solution[1]:
                     continue
 
-                if transition_function(solution) < self(solution):
+                if cost(solution) < self(solution):
                     return False
-        return True  
+        return True
 
 
-# * ===============GENERIC SEARCH===============
+# * ==============================
 
 
-class DijkstraFrontier(Frontier):
-    def __init__(self) -> None:
+class AutoSortFrontier(Frontier):
+    def __init__(self, func: t.Callable[[NodeSolutionType], float]) -> None:
         super().__init__()
-        self.cost_function = PathCost()
+        self.func = func
+
+    def ordered_index(
+        self,
+        node: NodeSolutionType,
+        arr: t.List[NodeSolutionType],
+        pointer: int = 0,
+    ) -> int:
+
+        if not arr:
+            return pointer
+
+        mid_index = (len(arr) - 1) // 2
+        index = mid_index + pointer
+
+        cost = self.func(node)
+
+        if cost > self.func(arr[mid_index]):
+            return self.ordered_index(node, arr[mid_index + 1 :], index + 1)
+
+        elif cost < self.func(self.frontier[mid_index]):
+            return self.ordered_index(node, arr[:mid_index], pointer)
+
+        return index
 
     def add_node(self, node: NodeSolutionType) -> None:
-        OrderedList.insert_ordered(self.frontier, node, self.cost_function)
+        index = self.ordered_index(node, self.frontier)
+        self.frontier.insert(index, node)
 
 
-class GreedyFrontier(Frontier):
-    def __init__(self) -> None:
-        super().__init__()
-        self.heuristic = HeuristicFunction()
+class DijkstraFrontier(AutoSortFrontier):
+    def __init__(self, cost: CostFunction = PathCost()) -> None:
+        super().__init__(cost)
 
-    def set_heuristic(self, heuristic: HeuristicFunction) -> None:
-        self.heuristic = heuristic
 
-    def add_node(self, node: NodeSolutionType) -> None:
-        OrderedList.insert_ordered(self.frontier, node, self.heuristic)
+class GreedyFrontier(AutoSortFrontier):
+    def __init__(self, heuristic: HeuristicFunction) -> None:
+        super().__init__(heuristic)
+
+
+class AStarFrontier(AutoSortFrontier):
+    def __init__(self, cost: CostFunction, heuristic: HeuristicFunction) -> None:
+
+        def cost_heuristic(node_solution: NodeSolutionType):
+            return cost(node_solution) + heuristic(node_solution)
+
+        total_heuristic = HeuristicFunction()            
+        total_heuristic.set_function(cost_heuristic)
+
+        super().__init__(total_heuristic)
 
 
 # * ===============GENERIC SEARCH===============
@@ -180,7 +188,7 @@ class SearchAlgorithm:
         self.frontier = frontier
         self.exploration_set = set()
 
-    def reset (self):
+    def reset(self):
         self.frontier.clear()
         self.exploration_set.clear()
 
@@ -189,7 +197,7 @@ class SearchAlgorithm:
 
     def search(self, graph: Graph, start: Node, end: Node) -> NodeSolutionType:
         self.reset()
-        
+
         self.frontier.add_node((start, []))
         self.exploration_set.add(start)
 
