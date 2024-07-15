@@ -73,37 +73,53 @@ class PathCost(CostFunction):
 
 
 class HeuristicFunction(CostFunction):
-    def check_scale(self, graph: Graph) -> float:
-        difference_sum = 0
+    def check_scale(
+        self,
+        graph: Graph,
+        cost: CostFunction = PathCost(),
+        check_nodes: t.Optional[t.Iterable[Node]] = None,
+    ) -> float:
+
+        if not check_nodes:
+            check_nodes = graph.nodes
+
         count = 0
+        value = 0
 
-        for relation in graph.relations:
-            weight = relation.weight if (relation.weight != 0) else 1
+        search = SearchAlgorithm(BFSFrontier())
+        for init in check_nodes:
+            for end in check_nodes:
 
-            heuristic = self(NodeSolution(relation.end, [relation]))
+                solution = search.search(graph, init, end)
 
-            if heuristic == weight:
-                return 0.0
+                if not solution.path:
+                    continue
 
-            relative_diff = abs(math.log10(heuristic / weight))
+                cost_value = (cost(solution) if cost(solution) else 1)
+                heuristic_value = self(solution)
 
-            sensitivity_factor = 1.5
-            scaled_diff = relative_diff / sensitivity_factor
+                if cost_value == 0 or heuristic_value == 0:
+                    continue
 
-            difference = math.tanh(scaled_diff)
+                if cost_value > heuristic_value:
+                    difference = cost_value / heuristic_value
+                    difference = 2 - difference  # reflects the x
 
-            difference_sum += difference
-            count += 1
+                else:
+                    difference = heuristic_value / cost_value
 
-        if count > 0:
-            return difference_sum / count
-        return 0
+                sig = 1 / (1 + math.exp(-0.04605 * (difference - 1)))
+
+                count += 1
+                value += sig
+
+        return value / count
 
     def is_admissible(
         self,
         graph: Graph,
-        check_nodes: t.Optional[t.Iterable[Node]] = None,
         cost: CostFunction = PathCost(),
+        check_nodes: t.Optional[t.Iterable[Node]] = None,
     ) -> bool:
 
         if not check_nodes:
