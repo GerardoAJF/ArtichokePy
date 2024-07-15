@@ -2,8 +2,6 @@ import typing as t
 import colorama as cl
 import itertools as tools
 
-RelationType = t.Tuple["Node", float]
-
 VectorType = t.Dict["Node", t.Any]
 MatrixType = t.Dict["Node", VectorType]
 
@@ -11,15 +9,22 @@ MatrixType = t.Dict["Node", VectorType]
 class Node:
     counter = tools.count()
 
-    def __init__(self, value: t.Any) -> None:
+    def __init__(self, value: t.Any, **attributes) -> None:
         self._id = "N" + str(next(Node.counter))
         self.value = value
+        self.attributes = attributes
 
         self.parents: t.Set[Relation] = set()
         self.relations: t.Set[Relation] = set()
 
     def __repr__(self) -> str:
         return str(self.value)
+
+    def __getattr__(self, name: str) -> t.Any:
+        if name in self.attributes:
+            return self.attributes[name]
+
+        return self.__getattribute__(name)
 
     @property
     def input_degree(self) -> int:
@@ -29,7 +34,9 @@ class Node:
     def output_degree(self) -> int:
         return len(self.relations)
 
-    def add_relation(self, *relations: RelationType, bidirectional=False) -> t.Self:
+    def add_relation(
+        self, *relations: t.Tuple["Node", float], bidirectional=False
+    ) -> t.Self:
         for node, weight in relations:
             relation = Relation(self, node, weight)
 
@@ -143,11 +150,11 @@ class Graph:
         for node in nodes:
 
             if isinstance(node, Node):
-                new_node = Node(node.value)
+                new_node = Node(node.value, **node.attributes)
                 new_node._id = node._id
 
             else:
-                new_node = Node(node)
+                new_node = Node(node[0])
 
             new_nodes.append(new_node)
             self.nodes.add(new_node)
@@ -161,7 +168,9 @@ class Graph:
             for parent in node.parents.copy():
                 parent.init.remove_relation(node)
 
-    def get_centrality_nodes(self, centrality: t.Literal["central", "border"] = "central") -> t.Set[Node]:
+    def get_centrality_nodes(
+        self, centrality: t.Literal["central", "border"] = "central"
+    ) -> t.Set[Node]:
         if centrality == "central":
             absolute_degree = float("-inf")
             comparison = lambda x, y: x > y
@@ -178,7 +187,7 @@ class Graph:
                 absolute_degree = degree
                 nodes.clear()
                 nodes.add(node)
-                
+
             if degree == absolute_degree:
                 nodes.add(node)
         return nodes
@@ -281,16 +290,3 @@ def print_adjacent_matrix(matrix: t.Union[Graph, MatrixType]) -> None:
 
 if __name__ == "__main__":
     my_graph = Graph()
-    a, b, c = my_graph.add_node("A", "B", "C")
-
-    a.add_relation((b, 0), (c, 0))
-    print_adjacent_matrix(my_graph)
-
-    my_graph2 = Graph()
-    a2, c2, d = my_graph2.add_node(a, c, "D")
-
-    c2.add_relation((a2, 0), (d, 0))
-    print_adjacent_matrix(my_graph2)
-
-    print_adjacent_matrix(my_graph + my_graph2)
-    print_adjacent_matrix(my_graph - my_graph2)
