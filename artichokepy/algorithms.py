@@ -73,54 +73,7 @@ class PathCost(CostFunction):
 
 
 class HeuristicFunction(CostFunction):
-    def check_scale(
-        self,
-        graph: Graph,
-        cost: CostFunction = PathCost(),
-        check_nodes: t.Optional[t.Iterable[Node]] = None,
-    ) -> float:
-
-        if not check_nodes:
-            check_nodes = graph.nodes
-
-        count = 0
-        value = 0
-
-        search = SearchAlgorithm(BFSFrontier())
-        for init in check_nodes:
-            for end in check_nodes:
-
-                solution = search.search(graph, init, end)
-
-                if not solution.path:
-                    continue
-
-                cost_value = (cost(solution) if cost(solution) else 1)
-                heuristic_value = self(solution)
-
-                if cost_value == 0 or heuristic_value == 0:
-                    continue
-
-                if cost_value > heuristic_value:
-                    difference = cost_value / heuristic_value
-                    difference = 2 - difference  # reflects the x
-
-                else:
-                    difference = heuristic_value / cost_value
-
-                sig = 1 / (1 + math.exp(-0.04605 * (difference - 1)))
-
-                count += 1
-                value += sig
-
-        return value / count
-
-    def is_admissible(
-        self,
-        graph: Graph,
-        cost: CostFunction = PathCost(),
-        check_nodes: t.Optional[t.Iterable[Node]] = None,
-    ) -> bool:
+    def get_paths(self, graph: Graph, check_nodes: t.Optional[t.Iterable[Node]]):
 
         if not check_nodes:
             check_nodes = graph.nodes
@@ -135,8 +88,51 @@ class HeuristicFunction(CostFunction):
                 if not solution.path:
                     continue
 
-                if cost(solution) < self(solution):
-                    return False
+                yield solution
+
+    def check_scale(
+        self,
+        graph: Graph,
+        cost: CostFunction = PathCost(),
+        check_nodes: t.Optional[t.Iterable[Node]] = None,
+    ) -> float:
+
+        count = 0
+        value = 0
+
+        for solution in self.get_paths(graph, check_nodes):
+            cost_value = cost(solution)
+            heuristic_value = self(solution)
+
+            if cost_value == 0 or heuristic_value == 0:
+                continue
+
+            difference = heuristic_value / cost_value
+            if cost_value > heuristic_value:
+                difference = cost_value / heuristic_value
+                difference = 2 - difference  # reflects the x
+
+            # sigmoid function shifted one to the right
+            sig = 1 / (1 + math.exp(-0.04605 * (difference - 1)))
+
+            count += 1
+            value += sig
+
+        if count:
+            return value / count
+        return 0.5
+
+    def is_admissible(
+        self,
+        graph: Graph,
+        cost: CostFunction = PathCost(),
+        check_nodes: t.Optional[t.Iterable[Node]] = None,
+    ) -> bool:
+
+        for solution in self.get_paths(graph, check_nodes):
+            if cost(solution) < self(solution):
+                return False
+
         return True
 
 
