@@ -6,12 +6,24 @@ from artichokepy.graph import Graph, Node, Relation
 
 
 class NodeSolution:
-    def __init__(self, node: Node, path: t.List[Relation]) -> None:
+    def __init__(self, node: Node) -> None:
         self.node = node
-        self.path = path
+
+        self.path = []
 
     def __repr__(self) -> str:
         return f"{self.node} :: {' & '.join(str(relation) for relation in self.path)}"
+
+    def add_steps(self, *relations: Relation) -> t.Self:
+        for relation in relations:
+            self.path.append(relation)
+        return self
+
+    def get_previous_node(self, step=1) -> Node:
+        if len(self.path) < step:
+            step = 0
+
+        return self.path[-step].init
 
 
 # * ===============UNINFORMED FRONTIERS===============
@@ -73,10 +85,13 @@ class PathCost(CostFunction):
 
 
 class HeuristicFunction(CostFunction):
-    def get_paths(self, graph: Graph, check_nodes: t.Optional[t.Iterable[Node]]):
+
+    def _get_paths(self, graph: Graph, check_nodes: t.Optional[t.Iterable[Node]]) -> t.List[NodeSolution]:
 
         if not check_nodes:
             check_nodes = graph.nodes
+
+        solutions = []
 
         search = SearchAlgorithm(BFSFrontier())
         for init in check_nodes:
@@ -88,7 +103,9 @@ class HeuristicFunction(CostFunction):
                 if not solution.path:
                     continue
 
-                yield solution
+                solutions.append(solution)
+
+        return solutions
 
     def check_scale(
         self,
@@ -100,7 +117,8 @@ class HeuristicFunction(CostFunction):
         count = 0
         value = 0
 
-        for solution in self.get_paths(graph, check_nodes):
+        for solution in self._get_paths(graph, check_nodes):
+
             cost_value = cost(solution)
             heuristic_value = self(solution)
 
@@ -110,7 +128,7 @@ class HeuristicFunction(CostFunction):
             difference = heuristic_value / cost_value
             if cost_value > heuristic_value:
                 difference = cost_value / heuristic_value
-                difference = 2 - difference  # reflects the x
+                difference = 1 - (difference - 1)
 
             # sigmoid function shifted one to the right
             sig = 1 / (1 + math.exp(-0.04605 * (difference - 1)))
@@ -129,14 +147,36 @@ class HeuristicFunction(CostFunction):
         check_nodes: t.Optional[t.Iterable[Node]] = None,
     ) -> bool:
 
-        for solution in self.get_paths(graph, check_nodes):
+        for solution in self._get_paths(graph, check_nodes):
             if cost(solution) < self(solution):
                 return False
 
         return True
 
+    def is_consistent(
+        self,
+        graph: Graph,
+        cost: CostFunction = PathCost(),
+        check_nodes: t.Optional[t.Iterable[Node]] = None,
+    ) -> bool:
 
-# * ==============================
+        nodes = {}
+        for solution in sorted(self._get_paths(graph, check_nodes), key=lambda x: len(x.path)):
+
+            # In the case of nodes with multiple ways to reach it, we will choose the one with the shortest path.
+            if solution.node not in nodes or len(nodes[solution.node].path) > len(solution.path):
+                nodes[solution.node] = solution
+
+            prev_node = solution.get_previous_node(0)
+            prev_solution = nodes.get(prev_node, NodeSolution(prev_node))
+
+            if cost(solution) < self(prev_solution) - self(solution):
+                return False
+  
+        return True
+
+
+# * ==============="INFORMED" FRONTIERS===============
 
 
 class AutoSortFrontier(Frontier):
@@ -162,7 +202,7 @@ class AutoSortFrontier(Frontier):
         if cost > self.func(arr[mid_index]):
             return self.ordered_index(node, arr[mid_index + 1 :], index + 1)
 
-        elif cost < self.func(self.frontier[mid_index]):
+        elif cost < self.func(arr[mid_index]):
             return self.ordered_index(node, arr[:mid_index], pointer)
 
         return index
@@ -212,7 +252,7 @@ class SearchAlgorithm:
     def search(self, graph: Graph, start: Node, end: Node) -> NodeSolution:
         self.reset()
 
-        self.frontier.add_node(NodeSolution(start, []))
+        self.frontier.add_node(NodeSolution(start))
         self.exploration_set.add(start)
 
         while self.frontier.get_len() != 0 and len(self.exploration_set) != len(
@@ -228,10 +268,12 @@ class SearchAlgorithm:
             for relation in self.get_next_nodes(actual_node.node):
                 if relation.end not in self.exploration_set:
                     self.frontier.add_node(
-                        NodeSolution(relation.end, actual_node.path + [relation])
+                        NodeSolution(relation.end).add_steps(
+                            *actual_node.path, relation
+                        )
                     )
 
-        return NodeSolution(Node(None), [])
+        return NodeSolution(Node(None))
 
 
 if __name__ == "__main__":

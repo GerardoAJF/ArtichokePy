@@ -154,7 +154,7 @@ class Graph:
                 new_node._id = node._id
 
             else:
-                new_node = Node(node[0])
+                new_node = Node(node)
 
             new_nodes.append(new_node)
             self.nodes.add(new_node)
