@@ -160,21 +160,19 @@ class HeuristicFunction(CostFunction):
         check_nodes: t.Optional[t.Iterable[Node]] = None,
     ) -> bool:
 
-        nodes = {}
-        for solution in sorted(self._get_paths(graph, check_nodes), key=lambda x: len(x.path)):
+        paths = self._get_paths(graph, check_nodes)
+        nodes = {solution.node:solution for solution in paths}
 
-            # In the case of nodes with multiple ways to reach it, we will choose the one with the shortest path.
-            if solution.node not in nodes or len(nodes[solution.node].path) > len(solution.path):
-                nodes[solution.node] = solution
+        print(nodes)
 
+        for solution in paths:
             prev_node = solution.get_previous_node(0)
             prev_solution = nodes.get(prev_node, NodeSolution(prev_node))
 
-            if cost(solution) < self(prev_solution) - self(solution):
+            if self(prev_solution) > cost(solution) + self(solution):
                 return False
-  
-        return True
 
+        return True
 
 # * ==============="INFORMED" FRONTIERS===============
 
