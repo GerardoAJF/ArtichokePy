@@ -25,6 +25,13 @@ class NodeSolution:
 
         return self.path[-step].init
 
+    def __eq__(self, value: object) -> bool:
+        if isinstance(value, NodeSolution):
+            return self.node == value.node and self.path == value.path
+        return False
+
+    def __hash__(self) -> int:
+        return hash((self.node, *self.path))
 
 # * ===============UNINFORMED FRONTIERS===============
 
@@ -86,7 +93,7 @@ class PathCost(CostFunction):
 
 class HeuristicFunction(CostFunction):
 
-    def _get_paths(self, graph: Graph, check_nodes: t.Optional[t.Iterable[Node]]) -> t.List[NodeSolution]:
+    def __get_paths(self, graph: Graph, check_nodes: t.Optional[t.Iterable[Node]]) -> t.List[NodeSolution]:
 
         if not check_nodes:
             check_nodes = graph.nodes
@@ -117,7 +124,7 @@ class HeuristicFunction(CostFunction):
         count = 0
         value = 0
 
-        for solution in self._get_paths(graph, check_nodes):
+        for solution in self.__get_paths(graph, check_nodes):
 
             cost_value = cost(solution)
             heuristic_value = self(solution)
@@ -147,7 +154,7 @@ class HeuristicFunction(CostFunction):
         check_nodes: t.Optional[t.Iterable[Node]] = None,
     ) -> bool:
 
-        for solution in self._get_paths(graph, check_nodes):
+        for solution in self.__get_paths(graph, check_nodes):
             if cost(solution) < self(solution):
                 return False
 
@@ -160,12 +167,11 @@ class HeuristicFunction(CostFunction):
         check_nodes: t.Optional[t.Iterable[Node]] = None,
     ) -> bool:
 
-        paths = self._get_paths(graph, check_nodes)
+        paths = self.__get_paths(graph, check_nodes)
         nodes = {solution.node:solution for solution in paths}
 
-        print(nodes)
-
         for solution in paths:
+            print(solution)
             prev_node = solution.get_previous_node(0)
             prev_solution = nodes.get(prev_node, NodeSolution(prev_node))
 
@@ -182,7 +188,7 @@ class AutoSortFrontier(Frontier):
         super().__init__()
         self.func = func
 
-    def ordered_index(
+    def __ordered_index(
         self,
         node: NodeSolution,
         arr: t.List[NodeSolution],
@@ -198,15 +204,15 @@ class AutoSortFrontier(Frontier):
         cost = self.func(node)
 
         if cost > self.func(arr[mid_index]):
-            return self.ordered_index(node, arr[mid_index + 1 :], index + 1)
+            return self.__ordered_index(node, arr[mid_index + 1 :], index + 1)
 
         elif cost < self.func(arr[mid_index]):
-            return self.ordered_index(node, arr[:mid_index], pointer)
+            return self.__ordered_index(node, arr[:mid_index], pointer)
 
         return index
 
     def add_node(self, node: NodeSolution) -> None:
-        index = self.ordered_index(node, self.frontier)
+        index = self.__ordered_index(node, self.frontier)
         self.frontier.insert(index, node)
 
 

@@ -34,9 +34,14 @@ class Node:
     def output_degree(self) -> int:
         return len(self.relations)
 
+    @property
+    def degree(self) -> int:
+        return len(self.parents) + len(self.relations)
+
     def add_relation(
         self, *relations: t.Tuple["Node", float], bidirectional=False
     ) -> t.Self:
+
         for node, weight in relations:
             relation = Relation(self, node, weight)
 
@@ -106,12 +111,16 @@ class Graph:
 
     # * CHARACTERISTICS-------------------------------------
 
-    def is_eulerian(self) -> bool:
+    def eulerian_path(self) -> bool:
+        # In this implementation, a "bidirectional" path can be traversed 2 times
+
         input_unbalanced = 0
         output_unbalanced = 0
 
         for node in self.nodes:
             unbalanced_edges = node.input_degree - node.output_degree
+
+            print(node, node.input_degree, node.output_degree)
 
             if unbalanced_edges == 1:
                 input_unbalanced += 1
@@ -122,21 +131,18 @@ class Graph:
             return False
         return True
 
-    def is_hamiltonian(self) -> bool:
-        if len(self.relations) <= 2:
-            return True
-
-        return all(node.degree >= len(self.nodes) / 2 for node in self.nodes)
+    def hamiltonian_cycle(self) -> bool:
+        return all(node.degree >= len(self.nodes) - 1 for node in self.nodes)
 
     @property
     def density(self) -> float:
-        directed = any(relation.weight != 0 for relation in self.relations)
+        weighted = any(relation.weight != 0 for relation in self.relations)
 
         vertices = len(self.nodes)
         if vertices <= 1:
             return 0.0
 
-        if not directed:
+        if not weighted:
             return len(self.relations) / (vertices * (vertices - 1))
 
         sum_weights = sum(relation.weight for relation in self.relations)
@@ -181,7 +187,7 @@ class Graph:
 
         nodes = set()
         for node in self.nodes:
-            degree = node.input_degree + node.output_degree
+            degree = node.degree
 
             if comparison(degree, absolute_degree):
                 absolute_degree = degree
@@ -247,14 +253,57 @@ class Graph:
 
     def __eq__(self, value: object) -> bool:
         if isinstance(value, Graph):
-            return [[*row.values()] for row in self.adjacency_matrix.values()] == [
-                [*row.values()] for row in value.adjacency_matrix.values()
-            ]
+
+            if len(self.nodes) != len(value.nodes):
+                return False
+
+            sorted_rows1 = sorted(
+                [sorted(row.values()) for row in self.adjacency_matrix.values()]
+            )
+            sorted_rows2 = sorted(
+                [sorted(row.values()) for row in value.adjacency_matrix.values()]
+            )
+
+            if sorted_rows1 != sorted_rows2:
+                return False
+
+            transpose1 = list(
+                map(
+                    list, zip(*[row.values() for row in self.adjacency_matrix.values()])
+                )
+            )
+            transpose2 = list(
+                map(
+                    list,
+                    zip(*[row.values() for row in value.adjacency_matrix.values()]),
+                )
+            )
+
+            sorted_cols1 = sorted([sorted(col) for col in transpose1])
+            sorted_cols2 = sorted([sorted(col) for col in transpose2])
+
+            return sorted_cols1 == sorted_cols2
+
         return False
 
     def __hash__(self) -> int:
+        sorted_rows = sorted(
+                [sorted(row.values()) for row in self.adjacency_matrix.values()]
+            )
+
+        transpose = list(
+                map(
+                    list, zip([row.values() for row in self.adjacency_matrix.values()])
+                )
+            )
+
+        sorted_cols = sorted([sorted(*col) for col in transpose])
+
         return hash(
-            (([*row.values()] for row in self.adjacency_matrix.values()), self._id)
+            (
+                *[tuple(row) for row in sorted_rows], 
+                *[tuple(col) for col in sorted_cols],
+            )
         )
 
     def __add__(self, graph: t.Self) -> "Graph":
@@ -285,8 +334,8 @@ def print_adjacent_matrix(matrix: t.Union[Graph, MatrixType]) -> None:
             print(colors.get(number, cl.Fore.WHITE) + str(number), end=" ")
         print()
 
-    print(cl.Fore.YELLOW + "-" * 25)
+    print(cl.Fore.YELLOW + "-" * ((matrix.__len__() * 2) + 1))
 
 
 if __name__ == "__main__":
-    my_graph = Graph()
+    pass
