@@ -1,6 +1,7 @@
 import math
 import abc
 import typing as t
+import functools
 
 from artichokepy.graph import Graph, Node, Relation
 
@@ -32,6 +33,7 @@ class NodeSolution:
 
     def __hash__(self) -> int:
         return hash((self.node, *self.path))
+
 
 # * ===============UNINFORMED FRONTIERS===============
 
@@ -91,9 +93,60 @@ class PathCost(CostFunction):
         self.set_function(path_length)
 
 
-class HeuristicFunction(CostFunction):
+class State:
+    def __init__(self, value: t.Any) -> None:
+        self.value: t.Any = value
+        self.update_func = lambda : self.value
 
-    def __get_paths(self, graph: Graph, check_nodes: t.Optional[t.Iterable[Node]]) -> t.List[NodeSolution]:
+    def add_update_func(self, func: t.Callable, **arguments):
+        if arguments:
+            self.update_func = lambda: func(**arguments)
+            return 
+
+        self.update_func = func
+
+    def _update_value(self):
+        self.value = self.update_func()
+
+
+class HeuristicFunction(CostFunction):
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.states: t.Dict[str, State] = {}
+
+    def add_state(self, *values: t.Tuple[str, t.Any]):
+        new_states = []
+        for value in values:
+            state = State(value[1])
+
+            new_states.append(state)
+            self.states[value[0]] = state
+
+        return new_states
+
+    def subscribe_state(self, *states: t.Union[str, State]):
+        def decorator(func: t.Callable):
+
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                x = func(*args, **kwargs)
+                for state in states:
+                    if not (state in self.states.keys() or state in self.states.values()):
+                        continue
+
+                    if isinstance(state, str):
+                        state = self.states[state]
+
+                    state._update_value()
+                return x
+
+            return wrapper
+        return decorator
+
+    def __get_paths(
+        self, graph: Graph, check_nodes: t.Optional[t.Iterable[Node]]
+    ) -> t.List[NodeSolution]:
 
         if not check_nodes:
             check_nodes = graph.nodes
@@ -168,10 +221,9 @@ class HeuristicFunction(CostFunction):
     ) -> bool:
 
         paths = self.__get_paths(graph, check_nodes)
-        nodes = {solution.node:solution for solution in paths}
+        nodes = {solution.node: solution for solution in paths}
 
         for solution in paths:
-            print(solution)
             prev_node = solution.get_previous_node(0)
             prev_solution = nodes.get(prev_node, NodeSolution(prev_node))
 
@@ -179,6 +231,7 @@ class HeuristicFunction(CostFunction):
                 return False
 
         return True
+
 
 # * ==============="INFORMED" FRONTIERS===============
 
