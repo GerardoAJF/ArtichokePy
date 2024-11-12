@@ -15,19 +15,17 @@ def nodes():
     graph = Graph()
 
     a, b, c = graph.add_node("A", "B", "C")
-    
+
     a.add_relation((b, 5), (c, 10))
     return a, b, c
 
 
 def test_node_solution_add_steps(nodes):
     a, b, c = nodes
-    
+
     node_solution = NodeSolution(a)
 
-    node_solution.add_steps(
-        Relation(c, b, 0), Relation(b, a, 0)
-    )
+    node_solution.add_steps(Relation(c, b, 0), Relation(b, a, 0))
 
     assert node_solution.path == [
         Relation(c, b, 0),
@@ -40,9 +38,7 @@ def test_node_solution_get_previous_node(nodes):
 
     node_solution = NodeSolution(a)
 
-    node_solution.add_steps(
-        Relation(c, b, 0), Relation(b, a, 0)
-    )
+    node_solution.add_steps(Relation(c, b, 0), Relation(b, a, 0))
 
     assert node_solution.get_previous_node(1) == b
     assert node_solution.get_previous_node(2) == c
@@ -50,21 +46,21 @@ def test_node_solution_get_previous_node(nodes):
 
 def test_node_solution_comparison(nodes):
     a, b, _ = nodes
-    
+
     node_solution = NodeSolution(a)
     assert node_solution == NodeSolution(a)
-    
+
     node_solution.add_steps(Relation(b, a, 5))
     assert node_solution != NodeSolution(a)
     assert node_solution == NodeSolution(a).add_steps(Relation(b, a, 5))
-    
-    
+
+
 def test_node_solution_hash(nodes):
     a, b, _ = nodes
-    
+
     node_solution = NodeSolution(a)
     assert hash(node_solution) == hash(NodeSolution(a))
-    
+
     node_solution.add_steps(Relation(b, a, 5))
     assert hash(node_solution) != hash(NodeSolution(a))
     assert hash(node_solution) == hash(NodeSolution(a).add_steps(Relation(b, a, 5)))
@@ -187,9 +183,9 @@ def test_a_star_frontier(node_solutions):
 
     heuristic = HeuristicFunction()
     heuristic.set_function(lambda x: x.node.color)
-    
+
     frontier = AStarFrontier(PathCost(), heuristic)
-    
+
     frontier.add_node(b)
     frontier.add_node(c)
     frontier.add_node(a)
@@ -203,6 +199,7 @@ def test_a_star_frontier(node_solutions):
 
 
 # *==================FUNCTIONS=====================
+
 
 @pytest.fixture
 def graph():
@@ -275,6 +272,41 @@ def test_heuristic_function_is_consistent(graph):
 # *==================SEARCH ALGORITHM=====================
 
 
+def test_heuristic_function_add_state():
+    heuristic = HeuristicFunction()
+    e, o = heuristic.add_state(("even", 0), ("odd", 1))
+
+    assert "even" in heuristic.states.keys()
+    assert "odd" in heuristic.states.keys()
+
+    assert e in heuristic.states.values()
+    assert o in heuristic.states.values()
+
+
+def test_heuristic_function_subscribe_state():
+    heuristic = HeuristicFunction()
+    e, o = heuristic.add_state(("even", 0), ("odd", 1))
+
+    def update_value(state: State, step=2):
+        return state.value + step
+
+    e.add_update_func(update_value)
+    o.add_update_func(update_value, step=4)
+
+    @heuristic.subscribe_state(e, "odd")
+    def manual_activation():
+        print("update states")
+
+    manual_activation()
+    assert e.value == 2 and o.value == 5
+
+    manual_activation()
+    assert e.value == 4 and o.value == 9
+
+
+# *==================SEARCH ALGORITHM=====================
+
+
 @pytest.fixture
 def graph_nodes():
     graph = Graph()
@@ -292,26 +324,26 @@ def graph_nodes():
 def test_search_algorithm_get_next_nodes(nodes):
     a, b, c = nodes
     search = SearchAlgorithm(DijkstraFrontier())
-    assert search.get_next_nodes(a) == {
-        Relation(a, b, 5), 
-        Relation(a, c, 10)}
-    
-    
+    assert search.get_next_nodes(a) == {Relation(a, b, 5), Relation(a, c, 10)}
+
+
 def test_search_algorithm_search(graph_nodes):
     graph, a, b, _, d, _ = graph_nodes
-    
+
     search = SearchAlgorithm(BFSFrontier())
-    
-    assert search.search(graph, a, d) == NodeSolution(d).add_steps(Relation(a, b, 5), Relation(b, d, 6))
+
+    assert search.search(graph, a, d) == NodeSolution(d).add_steps(
+        Relation(a, b, 5), Relation(b, d, 6)
+    )
 
 
 def test_search_reset(graph_nodes):
     graph, a, b, c, d, _ = graph_nodes
-    
+
     search = SearchAlgorithm(BFSFrontier())
-    
+
     search.search(graph, a, d)
     assert search.exploration_set.issuperset({a, b, c, d})
-    
+
     search.reset()
     assert search.exploration_set == set()

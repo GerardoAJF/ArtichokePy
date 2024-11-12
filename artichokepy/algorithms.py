@@ -96,17 +96,17 @@ class PathCost(CostFunction):
 class State:
     def __init__(self, value: t.Any) -> None:
         self.value: t.Any = value
-        self.update_func = lambda : self.value
+        self.update_func = lambda _: self.value
 
-    def add_update_func(self, func: t.Callable, **arguments):
+    def add_update_func(self, func: t.Callable[["State"], t.Any], **arguments):
         if arguments:
-            self.update_func = lambda: func(**arguments)
+            self.update_func = lambda state: func(state, **arguments)
             return 
 
         self.update_func = func
 
     def _update_value(self):
-        self.value = self.update_func()
+        self.value = self.update_func(self)
 
 
 class HeuristicFunction(CostFunction):
@@ -115,7 +115,7 @@ class HeuristicFunction(CostFunction):
 
         self.states: t.Dict[str, State] = {}
 
-    def add_state(self, *values: t.Tuple[str, t.Any]):
+    def add_state(self, *values: t.Tuple[str, t.Any]) -> t.List[State]:
         new_states = []
         for value in values:
             state = State(value[1])
@@ -125,7 +125,7 @@ class HeuristicFunction(CostFunction):
 
         return new_states
 
-    def subscribe_state(self, *states: t.Union[str, State]):
+    def subscribe_state(self, *states: t.Union[str, State]):# -> Callable[..., _Wrapped[Callable[..., Any], Any, Callable[...:
         def decorator(func: t.Callable):
 
             @functools.wraps(func)
@@ -331,7 +331,3 @@ class SearchAlgorithm:
                     )
 
         return NodeSolution(Node(None))
-
-
-if __name__ == "__main__":
-    pass

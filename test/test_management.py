@@ -1,6 +1,8 @@
 import pytest
 import sys
 import random
+import os
+
 
 sys.path.append("../artichokepy")
 
@@ -184,6 +186,9 @@ def test_export_import_csv(graph):
     assert nodes["N3"].value.x == 1
     assert nodes["N3"].value.y == 2
 
+    os.remove("file_nodes.csv")
+    os.remove("file_relations.csv")
+
 
 def test_export_import_json(graph):
     Exporter(graph).to_json("file.json")
@@ -205,3 +210,6 @@ def test_export_import_json(graph):
 
     assert nodes["N3"].value.x == 1
     assert nodes["N3"].value.y == 2
+
+    os.remove("file_nodes.json")
+    os.remove("file_relations.json")
