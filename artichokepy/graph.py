@@ -107,20 +107,17 @@ class Graph:
 
     def __init__(self) -> None:
         self._id = "G" + str(next(Graph.counter))
-        self.nodes = set()
+        self.nodes: t.Set[Node] = set()
 
     # * CHARACTERISTICS-------------------------------------
 
     def eulerian_path(self) -> bool:
         # In this implementation, a "bidirectional" path can be traversed 2 times
-
         input_unbalanced = 0
         output_unbalanced = 0
 
         for node in self.nodes:
             unbalanced_edges = node.input_degree - node.output_degree
-
-            print(node, node.input_degree, node.output_degree)
 
             if unbalanced_edges == 1:
                 input_unbalanced += 1
@@ -147,6 +144,56 @@ class Graph:
 
         sum_weights = sum(relation.weight for relation in self.relations)
         return sum_weights / (vertices * (vertices - 1))
+
+    def get_strongly_connected_components(self):
+        # Implementación de búsqueda de componentes fuertemente conexas (por ejemplo, usando el algoritmo de Tarjan)
+        pass   
+
+    def get_simple_cycles(self):
+        # Okey this is a implementation of johnson algorithm to find simple cycles
+        # I don't really know how it works very well but it works.
+
+        def get_cycle(node, goal, blocked, blocked_map, stack, cycles):
+            stack.append(node)
+            blocked[node] = True
+            found_cycle = False
+            relations = sorted(node.relations, key= lambda x: x.end._id)
+
+            for relation in relations:
+                if relation.end == goal:
+                    cycles.append(list(stack))
+                    found_cycle = True
+                elif not blocked[relation.end]:
+                    if get_cycle(relation.end, goal, blocked, blocked_map, stack, cycles):
+                        found_cycle = True
+
+            if found_cycle:
+                unblock(node, blocked, blocked_map)
+            else:
+                for relation in relations:
+                    if node not in blocked_map[relation.end]:
+                        blocked_map[relation.end].append(node)
+
+            stack.pop()
+            return found_cycle
+
+        def unblock(n, blocked, blocked_map):
+            blocked[n] = False
+            for node in blocked_map[n]:
+                if blocked[node]:
+                    unblock(node, blocked, blocked_map)
+            blocked_map[n].clear()
+
+        blocked = {node: False for node in self.nodes}
+        blocked_map = {node: [] for node in self.nodes}
+        stack = []
+        cycles = []
+
+        for node in sorted(self.nodes, key=lambda x: x._id):
+            get_cycle(node, node, blocked, blocked_map, stack, cycles)
+            blocked[node] = True
+
+        return cycles
 
     # * NODES-------------------------------------
 
@@ -288,20 +335,18 @@ class Graph:
 
     def __hash__(self) -> int:
         sorted_rows = sorted(
-                [sorted(row.values()) for row in self.adjacency_matrix.values()]
-            )
+            [sorted(row.values()) for row in self.adjacency_matrix.values()]
+        )
 
         transpose = list(
-                map(
-                    list, zip([row.values() for row in self.adjacency_matrix.values()])
-                )
-            )
+            map(list, zip([row.values() for row in self.adjacency_matrix.values()]))
+        )
 
         sorted_cols = sorted([sorted(*col) for col in transpose])
 
         return hash(
             (
-                *[tuple(row) for row in sorted_rows], 
+                *[tuple(row) for row in sorted_rows],
                 *[tuple(col) for col in sorted_cols],
             )
         )
@@ -335,7 +380,3 @@ def print_adjacent_matrix(matrix: t.Union[Graph, MatrixType]) -> None:
         print()
 
     print(cl.Fore.YELLOW + "-" * ((matrix.__len__() * 2) + 1))
-
-
-if __name__ == "__main__":
-    pass
