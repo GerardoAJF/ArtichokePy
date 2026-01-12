@@ -4,36 +4,7 @@ import typing as t
 import functools
 
 from artichokepy.graph import Graph, Node, Relation
-
-
-class NodeSolution:
-    def __init__(self, node: Node) -> None:
-        self.node = node
-
-        self.path = []
-
-    def __repr__(self) -> str:
-        return f"{self.node} :: {' & '.join(str(relation) for relation in self.path)}"
-
-    def add_steps(self, *relations: Relation) -> t.Self:
-        for relation in relations:
-            self.path.append(relation)
-        return self
-
-    def get_previous_node(self, step=1) -> Node:
-        if len(self.path) < step:
-            step = 0
-
-        return self.path[-step].init
-
-    def __eq__(self, value: object) -> bool:
-        if isinstance(value, NodeSolution):
-            return self.node == value.node and self.path == value.path
-        return False
-
-    def __hash__(self) -> int:
-        return hash((self.node, *self.path))
-
+from artichokepy.utils import NodePath
 
 # * ===============UNINFORMED FRONTIERS===============
 
@@ -49,23 +20,25 @@ class Frontier(abc.ABC):
         return len(self.frontier)
 
     @abc.abstractmethod
-    def add_node(self, node: NodeSolution) -> None:
+    def add_node(self, node: NodePath) -> None:
         pass
 
-    def remove_node(self) -> NodeSolution:
+    def remove_node(self) -> NodePath:
         return self.frontier.pop(0)
 
 
 class DFSFrontier(Frontier):
-    def add_node(self, node: NodeSolution) -> None:
+
+    def add_node(self, node: NodePath) -> None:
         self.frontier.append(node)
 
-    def remove_node(self) -> NodeSolution:
+    def remove_node(self) -> NodePath:
         return self.frontier.pop()
 
 
 class BFSFrontier(Frontier):
-    def add_node(self, node: NodeSolution) -> None:
+
+    def add_node(self, node: NodePath) -> None:
         self.frontier.append(node)
 
 
@@ -74,12 +47,12 @@ class BFSFrontier(Frontier):
 
 class CostFunction:
     def __init__(self) -> None:
-        self._function: t.Callable[[NodeSolution], float] = lambda x: 0
+        self._function: t.Callable[[NodePath], float] = lambda x: 0
 
-    def set_function(self, function: t.Callable[[NodeSolution], float]) -> None:
+    def set_function(self, function: t.Callable[[NodePath], float]) -> None:
         self._function = function
 
-    def __call__(self, node: NodeSolution) -> float:
+    def __call__(self, node: NodePath) -> float:
         return self._function(node)
 
 
@@ -87,7 +60,7 @@ class PathCost(CostFunction):
     def __init__(self) -> None:
         super().__init__()
 
-        def path_length(node_solution: NodeSolution):
+        def path_length(node_solution: NodePath):
             return sum([relation.weight for relation in node_solution.path])
 
         self.set_function(path_length)
@@ -125,7 +98,7 @@ class HeuristicFunction(CostFunction):
 
         return new_states
 
-    def subscribe_state(self, *states: t.Union[str, State]):# -> Callable[..., _Wrapped[Callable[..., Any], Any, Callable[...:
+    def subscribe_state(self, *states: t.Union[str, State]):
         def decorator(func: t.Callable):
 
             @functools.wraps(func)
@@ -146,7 +119,7 @@ class HeuristicFunction(CostFunction):
 
     def __get_paths(
         self, graph: Graph, check_nodes: t.Optional[t.Iterable[Node]]
-    ) -> t.List[NodeSolution]:
+    ) -> t.List[NodePath]:
 
         if not check_nodes:
             check_nodes = graph.nodes
@@ -225,7 +198,7 @@ class HeuristicFunction(CostFunction):
 
         for solution in paths:
             prev_node = solution.get_previous_node(0)
-            prev_solution = nodes.get(prev_node, NodeSolution(prev_node))
+            prev_solution = nodes.get(prev_node, NodePath(prev_node))
 
             if self(prev_solution) > cost(solution) + self(solution):
                 return False
@@ -237,14 +210,15 @@ class HeuristicFunction(CostFunction):
 
 
 class AutoSortFrontier(Frontier):
-    def __init__(self, func: t.Callable[[NodeSolution], float]) -> None:
+
+    def __init__(self, func: t.Callable[[NodePath], float]) -> None:
         super().__init__()
         self.func = func
 
     def __ordered_index(
         self,
-        node: NodeSolution,
-        arr: t.List[NodeSolution],
+        node: NodePath,
+        arr: t.List[NodePath],
         pointer: int = 0,
     ) -> int:
 
@@ -264,7 +238,7 @@ class AutoSortFrontier(Frontier):
 
         return index
 
-    def add_node(self, node: NodeSolution) -> None:
+    def add_node(self, node: NodePath) -> None:
         index = self.__ordered_index(node, self.frontier)
         self.frontier.insert(index, node)
 
@@ -282,7 +256,7 @@ class GreedyFrontier(AutoSortFrontier):
 class AStarFrontier(AutoSortFrontier):
     def __init__(self, cost: CostFunction, heuristic: HeuristicFunction) -> None:
 
-        def cost_heuristic(node_solution: NodeSolution):
+        def cost_heuristic(node_solution: NodePath):
             return cost(node_solution) + heuristic(node_solution)
 
         total_heuristic = HeuristicFunction()
@@ -306,10 +280,37 @@ class SearchAlgorithm:
     def get_next_nodes(self, node: Node) -> t.Set[Relation]:
         return set(node.relations)
 
-    def search(self, graph: Graph, start: Node, end: Node) -> NodeSolution:
+    def search(self, graph: Graph, start: Node, end: Node) -> NodePath:
+        """
+        Find one path between two nodes in a graph.
+
+        Parameters
+        ----------
+        graph : Graph
+            The graph containing nodes and edges.
+        start : Node
+            Source node where all paths begin.
+        end : Node
+            Target node where all paths terminate.
+
+        Returns
+        -------
+        NodePath
+            A NodePath object representing a simple path. 
+            If no path exists, returns an empty NodePath (with a null/empty node representation).
+
+        Example
+        -------
+        >>> graph = Graph()
+        >>> a, b, c, d, e, f = graph.add_node("A", "B", "C", "D", "E", "F")
+        >>> # Add edges between nodes...
+        >>> search = SearchAlgorithm(BFSFrontier())
+        >>> search.search(graph, a, d)
+        """
+
         self.reset()
 
-        self.frontier.add_node(NodeSolution(start))
+        self.frontier.add_node(NodePath(start))
         self.exploration_set.add(start)
 
         while self.frontier.get_len() != 0 and len(self.exploration_set) != len(
@@ -325,9 +326,55 @@ class SearchAlgorithm:
             for relation in self.get_next_nodes(actual_node.node):
                 if relation.end not in self.exploration_set:
                     self.frontier.add_node(
-                        NodeSolution(relation.end).add_steps(
-                            *actual_node.path, relation
-                        )
+                        NodePath(relation.end).add_steps(*actual_node.path, relation)
                     )
 
-        return NodeSolution(Node(None))
+        return NodePath(Node(None))
+
+    def search_all(self, start: Node, end: Node) -> t.Set[NodePath]:
+        """
+        Find all the paths between two nodes where no node appears twice in the same path.
+
+        Parameters
+        ----------
+        start : Node
+            Source node where all paths begin.
+        end : Node
+            Target node where all paths terminate.
+
+        Returns
+        -------
+        set[NodePath]
+            A set of NodePath objects, each representing a distinct simple path. 
+            If no paths exists returns a empty set.
+
+        Example
+        -------
+        >>> graph = Graph()
+        >>> a, b, c, d, e, f = graph.add_node("A", "B", "C", "D", "E", "F")
+        >>> # Add edges between nodes...
+        >>> search = SearchAlgorithm(BFSFrontier())
+        >>> search.search_all(a, d)
+
+        Notes
+        -----
+        - For large graphs, consider that the number of simple paths can be exponential.
+        """
+
+        self.reset()
+
+        self.frontier.add_node(NodePath(start))
+        paths = set()
+
+        while self.frontier.get_len() != 0:
+            actual_node = self.frontier.remove_node()
+
+            if actual_node.node == end:
+                paths.add(actual_node)
+
+            for relation in self.get_next_nodes(actual_node.node):
+                if relation.end not in actual_node.nodes:
+                    self.frontier.add_node(
+                        NodePath(relation.end).add_steps(*actual_node.path, relation)
+                    )
+        return paths

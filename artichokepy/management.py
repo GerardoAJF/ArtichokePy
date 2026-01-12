@@ -1,7 +1,6 @@
-from artichokepy import Graph, Node
+from artichokepy.graph import Graph, Node
 import ast
 import typing as t
-
 
 class CustomValue:
     def csv_printer(self) -> str:
@@ -54,12 +53,7 @@ class CustomValue:
 
 
 class CsvDocument:
-    signs = {
-        "node_sign": ";",
-        "attr_sign": "$",
-        "param_sign": "\\",
-        "arg_sign": "|"
-    }
+    signs = {"node_sign": ";", "attr_sign": "$", "param_sign": "\\", "arg_sign": "|"}
 
     @classmethod
     def csv_parser(cls, value: str, type_: str) -> t.Any:

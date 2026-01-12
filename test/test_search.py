@@ -3,7 +3,7 @@ import sys
 
 sys.path.append("../artichokepy")
 
-from artichokepy.algorithms import *
+from artichokepy.search import *
 from artichokepy.graph import *
 
 
@@ -23,20 +23,21 @@ def nodes():
 def test_node_solution_add_steps(nodes):
     a, b, c = nodes
 
-    node_solution = NodeSolution(a)
+    node_solution = NodePath(a)
 
-    node_solution.add_steps(Relation(c, b, 0), Relation(b, a, 0))
+    node_solution.add_steps(Relation(a, b, 0), Relation(b, c, 0))
 
     assert node_solution.path == [
-        Relation(c, b, 0),
-        Relation(b, a, 0),
+        Relation(a, b, 0),
+        Relation(b, c, 0),
     ]
+    assert node_solution.nodes == {a, b, c}
 
 
 def test_node_solution_get_previous_node(nodes):
     a, b, c = nodes
 
-    node_solution = NodeSolution(a)
+    node_solution = NodePath(a)
 
     node_solution.add_steps(Relation(c, b, 0), Relation(b, a, 0))
 
@@ -47,23 +48,23 @@ def test_node_solution_get_previous_node(nodes):
 def test_node_solution_comparison(nodes):
     a, b, _ = nodes
 
-    node_solution = NodeSolution(a)
-    assert node_solution == NodeSolution(a)
+    node_solution = NodePath(a)
+    assert node_solution == NodePath(a)
 
     node_solution.add_steps(Relation(b, a, 5))
-    assert node_solution != NodeSolution(a)
-    assert node_solution == NodeSolution(a).add_steps(Relation(b, a, 5))
+    assert node_solution != NodePath(a)
+    assert node_solution == NodePath(a).add_steps(Relation(b, a, 5))
 
 
 def test_node_solution_hash(nodes):
     a, b, _ = nodes
 
-    node_solution = NodeSolution(a)
-    assert hash(node_solution) == hash(NodeSolution(a))
+    node_solution = NodePath(a)
+    assert hash(node_solution) == hash(NodePath(a))
 
     node_solution.add_steps(Relation(b, a, 5))
-    assert hash(node_solution) != hash(NodeSolution(a))
-    assert hash(node_solution) == hash(NodeSolution(a).add_steps(Relation(b, a, 5)))
+    assert hash(node_solution) != hash(NodePath(a))
+    assert hash(node_solution) == hash(NodePath(a).add_steps(Relation(b, a, 5)))
 
 
 # *==================FRONTIERS=====================
@@ -76,9 +77,9 @@ def node_solutions():
     c = Node("C", color=1)
 
     return (
-        NodeSolution(a),
-        NodeSolution(b).add_steps(Relation(a, b, 3)),
-        NodeSolution(c).add_steps(Relation(b, c, 6)),
+        NodePath(a),
+        NodePath(b).add_steps(Relation(a, b, 3)),
+        NodePath(c).add_steps(Relation(b, c, 6)),
     )
 
 
@@ -217,18 +218,18 @@ def graph():
 
 def test_cost_function():
 
-    def cost_function(node: NodeSolution):
+    def cost_function(node: NodePath):
         return node.node.color
 
     cost = CostFunction()
     cost.set_function(cost_function)
 
-    assert cost(NodeSolution(Node("A", color=12))) == 12
+    assert cost(NodePath(Node("A", color=12))) == 12
 
 
 def test_path_cost():
     a, b, c = Node("A"), Node("B"), Node("C")
-    solution = NodeSolution(c).add_steps(Relation(a, b, 10), Relation(b, c, 5))
+    solution = NodePath(c).add_steps(Relation(a, b, 10), Relation(b, c, 5))
 
     assert PathCost()(solution) == 15
 
@@ -247,7 +248,7 @@ def test_heuristic_function_check_scale(graph):
 def test_heuristic_function_is_admissible(graph):
     heuristic = HeuristicFunction()
 
-    def heuristic_function(node: NodeSolution):
+    def heuristic_function(node: NodePath):
         return PathCost()(node) + 1
 
     heuristic.set_function(heuristic_function)
@@ -269,7 +270,7 @@ def test_heuristic_function_is_consistent(graph):
     assert heuristic.is_consistent(graph)
 
 
-# *==================SEARCH ALGORITHM=====================
+# *==================STATE=====================
 
 
 def test_heuristic_function_add_state():
@@ -332,9 +333,21 @@ def test_search_algorithm_search(graph_nodes):
 
     search = SearchAlgorithm(BFSFrontier())
 
-    assert search.search(graph, a, d) == NodeSolution(d).add_steps(
+    assert search.search(graph, a, d) == NodePath(d).add_steps(
         Relation(a, b, 5), Relation(b, d, 6)
     )
+
+
+def test_search_algorithm_search_all(graph_nodes):
+    _, a, b, c, d, e = graph_nodes
+
+    d.add_relation((b, 2))
+    search = SearchAlgorithm(BFSFrontier())
+
+    assert search.search_all(a, e) == {
+        NodePath(e).add_steps(Relation(a, b, 5), Relation(b, d, 6), Relation(d, e, 4)),
+        NodePath(e).add_steps(Relation(a, c, 10), Relation(c, e, 15)),
+    }
 
 
 def test_search_reset(graph_nodes):

@@ -7,7 +7,7 @@ import os
 sys.path.append("../artichokepy")
 
 from artichokepy.management import *
-from artichokepy.algorithms import *
+from artichokepy.search import *
 
 # *==================CUSTOM VALUE=====================
 
@@ -174,7 +174,7 @@ def test_export_import_csv(graph):
     import_.relations_from_csv("file_relations.csv", nodes)
 
     search = SearchAlgorithm(BFSFrontier())
-    assert search.search(graph2, nodes["N0"], nodes["N3"]) == NodeSolution(
+    assert search.search(graph2, nodes["N0"], nodes["N3"]) == NodePath(
         nodes["N3"]
     ).add_steps(Relation(nodes["N0"], nodes["N3"], 10))
 
@@ -199,7 +199,7 @@ def test_export_import_json(graph):
     import_.relations_from_json("file_relations.json", nodes)
 
     search = SearchAlgorithm(BFSFrontier())
-    assert search.search(graph2, nodes["N0"], nodes["N3"]) == NodeSolution(
+    assert search.search(graph2, nodes["N0"], nodes["N3"]) == NodePath(
         nodes["N3"]
     ).add_steps(Relation(nodes["N0"], nodes["N3"], 10))
 
